@@ -1,4 +1,5 @@
 import argparse
+import inspect
 import json
 import os
 import queue
@@ -83,20 +84,54 @@ def dedup_rows(rows):
     return list(merged.values())
 
 
-def ocr_image(ocr: PaddleOCR, img_path: str) -> str:
-    result = ocr.ocr(img_path, cls=True)
-    lines = []
+def _iter_ocr_texts(result):
+    """
+    兼容 PaddleOCR 不同版本返回结构。
+    """
     if not result:
-        return ""
+        return
 
-    for block in result:
-        if not block:
-            continue
-        for item in block:
-            text = item[1][0].strip()
-            confidence = float(item[1][1])
-            if text and confidence >= 0.5:
-                lines.append(text)
+    # 常见旧结构: list[list[[box, [text, score]], ...]]
+    if isinstance(result, list):
+        for block in result:
+            if isinstance(block, list):
+                for item in block:
+                    if (
+                        isinstance(item, list)
+                        and len(item) >= 2
+                        and isinstance(item[1], (list, tuple))
+                        and len(item[1]) >= 2
+                    ):
+                        text = str(item[1][0]).strip()
+                        try:
+                            confidence = float(item[1][1])
+                        except (TypeError, ValueError):
+                            confidence = 0.0
+                        yield text, confidence
+            elif isinstance(block, dict):
+                # 可能的新结构: [{"rec_texts": [...], "rec_scores": [...]}]
+                rec_texts = block.get("rec_texts", [])
+                rec_scores = block.get("rec_scores", [])
+                for idx, text in enumerate(rec_texts):
+                    score = rec_scores[idx] if idx < len(rec_scores) else 0.0
+                    try:
+                        confidence = float(score)
+                    except (TypeError, ValueError):
+                        confidence = 0.0
+                    yield str(text).strip(), confidence
+
+
+def ocr_image(ocr: PaddleOCR, img_path: str) -> str:
+    ocr_sig = inspect.signature(ocr.ocr)
+    if "cls" in ocr_sig.parameters:
+        result = ocr.ocr(img_path, cls=True)
+    else:
+        result = ocr.ocr(img_path)
+
+    lines = []
+    for text, confidence in _iter_ocr_texts(result):
+        if text and confidence >= 0.5:
+            lines.append(text)
     return "\n".join(lines)
 
 

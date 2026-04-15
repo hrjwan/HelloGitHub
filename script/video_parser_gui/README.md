@@ -57,5 +57,6 @@ pyinstaller --noconfirm --onefile --windowed --name miniapp_video_parser_gui min
 ## 注意事项
 
 - PaddleOCR 首次初始化会比较慢。
+- 脚本已兼容 `ocr.ocr(..., cls=True)` 与 `ocr.ocr(...)` 两类 PaddleOCR 调用方式，避免版本差异导致报错。
 - 不同分辨率/字体可能影响识别率，建议录屏保持清晰。
 - 如需适配更多字段（如 GMV、订单量、转化率），可在 `parse_blocks_from_text` 增加规则。
